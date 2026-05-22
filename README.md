@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <a href="https://snapclass-mainurl.streamlit.app/"><img src="https://img.shields.io/badge/🚀_Live_Demo-SnapClass-FF4B4B?style=for-the-badge" alt="Live Demo"/></a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
   <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Streamlit"/>
   <img src="https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase"/>
@@ -132,7 +136,7 @@ snapclass/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/snapclass.git
+git clone https://github.com/iamhm119/snapclass.git
 cd snapclass
 ```
 
