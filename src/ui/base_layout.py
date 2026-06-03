@@ -60,6 +60,15 @@ def style_base_layout():
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+            :root {
+                color-scheme: light;
+            }
+
+            .stApp {
+                color-scheme: light;
+                color: #1a1a2e;
+            }
+
                 
          /* Hide Top Bar of streamlit */
                 
