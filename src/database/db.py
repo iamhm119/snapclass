@@ -60,7 +60,7 @@ def get_teacher_subjects(teacher_id):
         sub['total_classes'] = unique_sessions
 
 
-        sub.pop('subject_student', None)
+        sub.pop('subject_students', None)
         sub.pop('attendance_logs', None)
 
     return subjects
@@ -94,4 +94,8 @@ def create_attendance(logs):
 
 def get_attendance_for_teacher(teacher_id):
     response = supabase.table('attendance_logs').select("*, subjects!inner(*)").eq('subjects.teacher_id', teacher_id).execute()
+    return response.data
+
+def get_detailed_attendance_for_teacher(teacher_id):
+    response = supabase.table('attendance_logs').select("*, subjects!inner(*), students(name)").eq('subjects.teacher_id', teacher_id).execute()
     return response.data

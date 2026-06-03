@@ -51,18 +51,18 @@ def get_trained_model():
         if embedding:
             X.append(np.array(embedding))
             y.append(student.get('student_id'))
-            
-        if len(X) == 0:
-            return 0
-        
-        clf = SVC(kernel='linear', probability=True, class_weight='balanced')
-        
-        try:
-            clf.fit(X, y)
-        except Exception as exc:
-            pass
-        
-        return {'clf' : clf, 'X':X, 'Y':y}
+
+    if len(X) == 0:
+        return 0
+
+    clf = SVC(kernel='linear', probability=True, class_weight='balanced')
+
+    try:
+        clf.fit(X, y)
+    except Exception as exc:
+        pass
+
+    return {'clf' : clf, 'X':X, 'Y':y}
         
 
 def train_classifier():

@@ -5,7 +5,7 @@ from src.ui.base_layout import style_background_dashboard, style_base_layout
 from src.components.header import header_dashboard
 from src.components.footer import footer_dashboard
 from src.components.subject_card import subject_card
-from src.database.db import check_teacher_exists, create_teacher, teacher_login, get_teacher_subjects, get_attendance_for_teacher
+from src.database.db import check_teacher_exists, create_teacher, teacher_login, get_teacher_subjects, get_attendance_for_teacher, get_detailed_attendance_for_teacher
 from src.components.dialog_create_subject import create_subject_dialog
 from src.components.dialog_share_subject import share_subject_dialog
 from src.components.dialog_add_photo import add_photos_dialog
@@ -17,6 +17,7 @@ import numpy as np
 from datetime import datetime
 
 import pandas as pd
+import plotly.express as px
 
 from src.database.config import supabase
 
@@ -55,7 +56,7 @@ def teacher_dashboard():
 
     if "current_teacher_tab" not in st.session_state:
         st.session_state.current_teacher_tab = 'take_attendance'
-    tab1, tab2, tab3 = st.columns(3)
+    tab1, tab2, tab3, tab4 = st.columns(4)
 
 
     with tab1:
@@ -72,8 +73,14 @@ def teacher_dashboard():
 
     with tab3:
         type3 = "primary" if st.session_state.current_teacher_tab == 'attendance_records' else "tertiary"
-        if st.button('Attendance Records',type=type3, width='stretch', icon=':material/cards_stack:'):
+        if st.button('Attendance Logs',type=type3, width='stretch', icon=':material/cards_stack:'):
             st.session_state.current_teacher_tab = 'attendance_records'
+            st.rerun()
+
+    with tab4:
+        type4 = "primary" if st.session_state.current_teacher_tab == 'analytics' else "tertiary"
+        if st.button('Analytics',type=type4, width='stretch', icon=':material/analytics:'):
+            st.session_state.current_teacher_tab = 'analytics'
             st.rerun()
 
 
@@ -85,6 +92,8 @@ def teacher_dashboard():
         teacher_tab_manage_subjects()
     if st.session_state.current_teacher_tab == "attendance_records":
         teacher_tab_attendance_records()
+    if st.session_state.current_teacher_tab == "analytics":
+        teacher_tab_analytics()
 
     
 
@@ -193,7 +202,7 @@ def teacher_tab_manage_subjects():
     teacher_id = st.session_state.teacher_data['teacher_id']
     col1, col2 = st.columns(2)
     with col1:
-        st.header('Manage Subjects', width='stretch')
+        st.header('Manage Subjects')
 
     with col2:
         if st.button('Create New Subject', width='stretch'):
@@ -208,24 +217,25 @@ def teacher_tab_manage_subjects():
                 ("🫂", "Students", sub['total_students']),
                 ("🕰️", "Classes", sub['total_classes']),
             ]
-        def share_btn():
-            if st.button(f"Share Code: {sub['name']}", key=f"share_{sub['subject_code']}", icon=":material/share:"):
-                share_subject_dialog(sub['name'], sub['subject_code'])
-            st.space()
 
-        subject_card(
-            name = sub['name'],
-            code = sub['subject_code'],
-            section = sub['section'],
-            stats=stats,
-            footer_callback=share_btn
-        )
+            def share_btn(name=sub['name'], code=sub['subject_code']):
+                if st.button(f"Share Code: {name}", key=f"share_{code}", icon=":material/share:"):
+                    share_subject_dialog(name, code)
+                st.space()
+
+            subject_card(
+                name=sub['name'],
+                code=sub['subject_code'],
+                section=sub['section'],
+                stats=stats,
+                footer_callback=share_btn
+            )
     else:
         st.info("NO SUBJECTS FOUND. CREATE ONE ABOVE")
 
 
 def teacher_tab_attendance_records():
-    st.header('Attendance Records')
+    st.header('Attendance Logs')
 
     teacher_id = st.session_state.teacher_data['teacher_id']
 
@@ -250,6 +260,16 @@ def teacher_tab_attendance_records():
 
     df = pd.DataFrame(data)
 
+    subject_options = sorted(df['Subject'].dropna().unique().tolist())
+    subject_filter = st.selectbox('Filter by Subject', options=['All'] + subject_options)
+
+    if subject_filter != 'All':
+        df = df[df['Subject'] == subject_filter]
+
+    if df.empty:
+        st.info('No attendance logs for the selected subject.')
+        return
+
 
 
     summary = (
@@ -271,6 +291,132 @@ def teacher_tab_attendance_records():
                   )
     
     st.dataframe(display_df, width='stretch', hide_index=True)
+
+    csv_data = display_df.to_csv(index=False)
+    st.download_button(
+        label="Export to CSV",
+        data=csv_data,
+        file_name=f"attendance_records_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+        type="secondary",
+        icon=":material/download:",
+    )
+
+
+def teacher_tab_analytics():
+    st.header('\U0001f4ca Analytics Dashboard')
+
+    teacher_id = st.session_state.teacher_data['teacher_id']
+    records = get_detailed_attendance_for_teacher(teacher_id)
+
+    if not records:
+        st.info('No attendance data yet. Take some attendance to see analytics!')
+        return
+
+    data = []
+    for r in records:
+        ts = r.get('timestamp', '')
+        data.append({
+            'student_id': r['student_id'],
+            'student_name': r.get('students', {}).get('name', 'Unknown'),
+            'subject_id': r['subject_id'],
+            'subject_name': r['subjects']['name'],
+            'subject_code': r['subjects']['subject_code'],
+            'timestamp': ts,
+            'date': ts[:10] if ts else None,
+            'is_present': bool(r.get('is_present', False))
+        })
+
+    df = pd.DataFrame(data)
+
+    # --- KPI Metrics ---
+    total_sessions = df.groupby(['subject_id', 'timestamp']).ngroups
+    avg_attendance = df['is_present'].mean() * 100
+    total_students = df['student_id'].nunique()
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric('Total Sessions', total_sessions)
+    k2.metric('Avg Attendance', f'{avg_attendance:.1f}%')
+    k3.metric('Total Students', total_students)
+
+    st.divider()
+
+    # --- Attendance Trend Over Time ---
+    st.subheader('\U0001f4c8 Attendance Trend Over Time')
+
+    trend = df.groupby(['date', 'subject_name']).agg(
+        attendance_pct=('is_present', lambda x: x.mean() * 100)
+    ).reset_index()
+
+    fig_trend = px.line(
+        trend, x='date', y='attendance_pct', color='subject_name',
+        markers=True,
+        labels={'date': 'Date', 'attendance_pct': 'Attendance %', 'subject_name': 'Subject'},
+        color_discrete_sequence=['#6C63FF', '#EC4899', '#10B981', '#F59E0B', '#3B82F6']
+    )
+    fig_trend.update_layout(
+        yaxis_range=[0, 105],
+        template='plotly_white',
+        font=dict(family='Inter, sans-serif'),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=20, b=40, l=40, r=20),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    )
+    fig_trend.update_traces(line=dict(width=3), marker=dict(size=8))
+    st.plotly_chart(fig_trend, width='stretch')
+
+    st.divider()
+
+    # --- Subject-wise Comparison ---
+    st.subheader('\U0001f4ca Subject-wise Attendance')
+
+    subject_stats = df.groupby('subject_name').agg(
+        attendance_pct=('is_present', lambda x: x.mean() * 100)
+    ).reset_index().sort_values('attendance_pct', ascending=True)
+
+    fig_bar = px.bar(
+        subject_stats, x='attendance_pct', y='subject_name',
+        orientation='h',
+        color='attendance_pct',
+        color_continuous_scale=[[0, '#EF4444'], [0.5, '#F59E0B'], [1, '#10B981']],
+        range_color=[0, 100],
+        labels={'subject_name': '', 'attendance_pct': 'Attendance %'},
+    )
+    fig_bar.update_layout(
+        yaxis_title='',
+        template='plotly_white',
+        showlegend=False,
+        font=dict(family='Inter, sans-serif'),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=20, b=40, l=20, r=20),
+    )
+    fig_bar.update_traces(marker_line_width=0)
+    st.plotly_chart(fig_bar, width='stretch')
+
+    st.divider()
+
+    # --- Low Attendance Alerts ---
+    st.subheader('\u26a0\ufe0f Low Attendance Alerts (below 75%)')
+
+    student_stats = df.groupby(['student_name', 'subject_name']).agg(
+        total=('is_present', 'count'),
+        attended=('is_present', 'sum')
+    ).reset_index()
+
+    student_stats['pct'] = (student_stats['attended'] / student_stats['total'] * 100).round(1)
+
+    low = student_stats[student_stats['pct'] < 75].sort_values('pct')
+
+    if low.empty:
+        st.success('All students are above 75% attendance!')
+    else:
+        for _, row in low.iterrows():
+            st.warning(
+                f"**{row['student_name']}** \u2014 {row['subject_name']}: "
+                f"{row['pct']}% ({int(row['attended'])}/{int(row['total'])} classes)"
+            )
 
 
 def login_teacher(username, password):
@@ -310,7 +456,7 @@ def teacher_screen_login():
     btnc1, btnc2 = st.columns(2)
 
     with btnc1:
-        if st.button('Login', icon=':material/passkey:', shortcut='control+enter', width='stretch'):
+        if st.button('Login', type="primary", icon=':material/passkey:', shortcut='control+enter', width='stretch'):
             if login_teacher(teacher_username, teacher_pass):
                 st.toast("welcome back!", icon="👋")
                 import time
@@ -320,7 +466,7 @@ def teacher_screen_login():
                 st.error("Invalid username and password combo")
 
     with btnc2:
-        if st.button('Register Instead', type="primary", icon=':material/passkey:', width='stretch'):
+        if st.button('Register Instead', type="secondary", icon=':material/passkey:', width='stretch'):
             st.session_state.teacher_login_type = 'register'
 
     footer_dashboard()
@@ -372,7 +518,7 @@ def teacher_screen_register():
     btnc1, btnc2 = st.columns(2)
 
     with btnc1:
-        if st.button('Register now', icon=':material/passkey:', shortcut='control+enter', width='stretch'):
+        if st.button('Register now', type="primary", icon=':material/passkey:', shortcut='control+enter', width='stretch'):
             success, message = register_teacher(teacher_username, teacher_name, teacher_pass, teacher_pass_confirm)
             if success:
                 st.success(message)
@@ -385,7 +531,7 @@ def teacher_screen_register():
 
 
     with btnc2:
-        if st.button('Login Instead', type="primary", icon=':material/passkey:', width='stretch'):
+        if st.button('Login Instead', type="secondary", icon=':material/passkey:', width='stretch'):
             st.session_state.teacher_login_type = 'login'
 
     footer_dashboard()
