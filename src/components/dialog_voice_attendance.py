@@ -24,7 +24,7 @@ def voice_attendance_dialog(selected_subject_id):
             st.warning('Please record classroom audio before analyzing.')
             return
 
-        with st.spinner('Prcessing Audio data'):
+        with st.spinner('Processing Audio data'):
             enrolled_res = supabase.table('subject_students').select("*, students(*)").eq('subject_id',selected_subject_id ).execute()
             enrolled_students = enrolled_res.data
 
@@ -37,7 +37,7 @@ def voice_attendance_dialog(selected_subject_id):
             }
 
             if not candidates_dict:
-                st.error('No enrolled students have voice profiles registerd')
+                st.error('No enrolled students have voice profiles registered')
                 return
             
             audio_bytes = audio_data.read()
